@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import json
 from urllib.parse import urljoin
 import pandas as pd
+import dask.dataframe as dd
+from dask.multiprocessing import get
 import numpy as np
 import datetime as dt
 import PyPDF2
@@ -92,6 +94,8 @@ class HKEXNews(AbstractScraper):
         df = returndf(res)
         df = df.applymap(self.html_entities_to_unicode)
         df.loc[:, 'FILE_LINK'] = df.loc[:, 'FILE_LINK'].apply(lambda x: urljoin(self.endpoint, x))
+        df.columns = df.columns.str.lower()
+        df.columns = df.columns.str.replace("file_link", 'url')
         if save_to_sql:
             table_name = f"{keyword}_hkexnews_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}_{doctype}"
             self.frame_to_sql(df, table_name, if_exists='replace')
@@ -100,21 +104,38 @@ class HKEXNews(AbstractScraper):
     def get_filing_content(self, keyword: str, start_date: dt.date=dt.date(1999, 12, 31),
         end_date: dt.dated=dt.date.today(), doctype='all', ascending: bool=False,
         verbose: bool=False, save_to_sql=False, convert_to_text=False, 
-        ignore_errors: bool=False) -> pd.DataFrame:
+        ignore_errors: bool=False, use_dask: bool=False,
+        npartitions: Optional[int]=16) -> pd.DataFrame:
         """return filing list for a given stock
         :param keyword: the stock name or symbol
         :param start_date: the start date of filings
         :param end_date: the end date of filings
         :param doctype: the type of filing, default is all
         :param ascending: sort the list in ascending order
-        :param verbose: print the progress if True"""
+        :param verbose: print the progress if True
+        :param save_to_sql: save the result to sqlite
+        :param convert_to_text: convert the content to text
+        :param ignore_errors: ignore errors when converting to text
+        :param use_dask: use dask to parallelize the process
+        :param npartitions: the number of partitions to use when using dask
+            no_cores * 2 recommended for optimal performance
+        """
         df = self.get_filing_list(keyword, start_date, end_date, doctype, 
             ascending, verbose)
-        for i, url in df.FILE_LINK.iteritems():
-            df.loc[i, 'FILE_CONTENT'] = self.session.get(url, timeout=self.timeout).content
+        df.loc[:, 'filing_content'] = df.loc[:, 'url'].apply(
+            lambda u: self.get_pdf(u, session=self.session, timeout=self.timeout))
+        # for i, url in df.FILE_LINK.iteritems():
+        #     df.loc[i, 'FILE_CONTENT'] = self.get_pdf(url, 
+        #         session=self.session, timeout=self.timeout)
         if convert_to_text:
             try:
-                df.loc[:, 'FILE_CONTENT'] = df.loc[:, 'FILE_CONTENT'].apply(self.pdf_to_text)
+                if use_dask:
+                    ddf = dd.from_pandas(df.filing_content.astype(bytes), npartitions=npartitions)
+                    df = ddf.map_partitions(lambda s: s.apply(
+                        lambda row: self.pdf_to_text(row))).compute(scheduler='threads')
+                # FIXME - issues remain here
+                else:
+                    df.loc[:, 'filing_content'] = df.loc[:, 'filing_content'].apply(self.pdf_to_text)
             except Exception as e:
                 if ignore_errors:
                     print(e)

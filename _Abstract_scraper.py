@@ -167,7 +167,7 @@ class AbstractScraper(ABC):
             del self._endpoint
         else:
             del self._endpoint
-    
+   
     @property
     def timeout(self) -> int:
         return self._timeout
@@ -240,13 +240,22 @@ class AbstractScraper(ABC):
         return text
     
     @staticmethod
-    def get_pdf(url: str) -> bytes:
+    def get_pdf(url: str, session: requests.Session=None, **kwargs) -> bytes:
         """
         :param url: The url to the pdf
+        :param session: The session to use for the request. If no session is 
+            passed, a new session will be created
         :return: The pdf as a byte stream
         """
-        assert url.split('.')[-1] == 'pdf', "url doesn't look like a pdf!"
-        return requests.get(url).content
+        assert isinstance(url, str), "url passed is not a string"
+        assert url.split('.')[-1].lower() == 'pdf', "url doesn't look like a pdf!"
+        default_adapter = requests.adapters.HTTPAdapter(max_retries=3)
+        if not session:
+            session = requests.Session()
+            schema = kwargs.get('schema', 'http')
+            adapter = kwargs.get('adapter', default_adapter)
+            session.mount(schema, adapter)
+        return session.get(url, **kwargs).content
     
     @staticmethod
     def html_entities_to_unicode(text: str) -> str:
