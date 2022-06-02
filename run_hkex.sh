@@ -1,0 +1,1 @@
+python -m FilingScraper.hkex.hkexnews -SP "./hkstocklist.txt" -V -ct -d "annual_report" -I 
