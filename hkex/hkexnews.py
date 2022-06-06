@@ -130,9 +130,13 @@ class HKEXNews(AbstractScraper):
         if convert_to_text:
             try:
                 if use_dask:
-                    ddf = dd.from_pandas(df.filing_content.astype(bytes), npartitions=npartitions)
-                    df = ddf.map_partitions(lambda s: s.apply(
-                        lambda row: self.pdf_to_text(row))).compute(scheduler='threads')
+                    ddf = dd.from_pandas(df.filing_content.astype(bytes), 
+                        npartitions=npartitions)
+                    df = ddf.astype(bytes).apply(
+                        lambda row: self.pdf_to_text(bytes(row)) 
+                        if str(row)[1:6] else np.nan, 
+                        meta=('filing_conent', 'object')
+                        ).compute(scheduler='threads')
                 # FIXME - issues remain here
                 else:
                     df.loc[:, 'filing_content'] = df.loc[:, 'filing_content'].apply(self.pdf_to_text)

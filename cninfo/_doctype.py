@@ -4,7 +4,8 @@ cninfo_doctypes = {
     'annual_report': '年年度报告$',
     'quarterly_report': '季度报告全文$',
     'presentation': '演示文稿',
-    'prospectus': '广联达：首次公开发行股票招股说明书',
+    'prospectus': '首次公开发行股票招股说明书',
+    'esg_report': '[(ESG)(社会责任)]',
     'all': ''
 }
 
